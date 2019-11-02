@@ -3,6 +3,21 @@
 
 // 在 checksum.cpp 中定义
 extern bool validateIPChecksum(uint8_t *packet, size_t len);
+extern uint16_t calcIPChecksum(uint8_t *packet);
+
+// 更新 IP 头校验和
+void updateIPChecksum(uint8_t *packet, size_t len) {
+  // set checksum = 0
+  packet[10] = packet[11] = 0;
+
+  uint16_t s = ~calcIPChecksum(packet);
+
+  packet[10] = s >> 8;
+  packet[11] = s;
+}
+
+// TTL -= 1
+void ttlDecrease(uint8_t *packet) { packet[8] -= 1; }
 
 /**
  * @brief 进行转发时所需的 IP 头的更新：
@@ -15,6 +30,10 @@ extern bool validateIPChecksum(uint8_t *packet, size_t len);
  * @return 校验和无误则返回 true ，有误则返回 false
  */
 bool forward(uint8_t *packet, size_t len) {
-  // TODO:
-  return false;
+  if (!validateIPChecksum(packet, len)) {
+    return false;
+  }
+  ttlDecrease(packet);
+  updateIPChecksum(packet, len);
+  return true;
 }
