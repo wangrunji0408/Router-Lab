@@ -1,12 +1,24 @@
+#include <arpa/inet.h>
 #include <stdint.h>
 #include <stdlib.h>
 
+struct IPHeader {
+  uint8_t version_ihl;
+  uint8_t padding[7];
+  uint8_t ttl;
+  uint8_t protocol;
+  uint16_t checksum;
+
+  uint8_t header_length() { return (version_ihl & 0xf) * 4; }
+};
+
 // 计算 IP 头校验和
 uint16_t calcIPChecksum(uint8_t *packet) {
-  int header_len = (packet[0] & 0xf) * 4;
+  auto header = (IPHeader *)packet;
+  int header_len = header->header_length();
   uint32_t s = 0;
   for (int i = 0; i < header_len; i += 2)
-    s += ((uint16_t)packet[i] << 8) | packet[i + 1];
+    s += ntohs(*(uint16_t *)&packet[i]);
   s = (s & 0xffff) + (s >> 16);
   return s;
 }
