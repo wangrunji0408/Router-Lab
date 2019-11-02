@@ -1,5 +1,7 @@
+#include "../checksum/checksum.cpp"
 #include "rip.h"
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 /*
@@ -9,6 +11,69 @@
   RipPacket 中额外记录了个数。 需要注意这里的地址都是用 **网络字节序（大端序）**
   存储的，1.2.3.4 在小端序的机器上被解释为整数 0x04030201 。
 */
+
+struct UDPHeader {
+  uint16_t src_port;
+  uint16_t dst_port;
+  uint16_t length;
+  uint16_t checksum;
+
+  uint16_t get_src_port() const { return ntohs(src_port); }
+  uint16_t get_dst_port() const { return ntohs(dst_port); }
+  uint16_t get_length() const { return ntohs(length); }
+};
+
+const uint16_t RIP_PORT = 520;
+
+struct RipRouteEntry {
+  uint16_t family;
+  uint16_t tag;
+  uint32_t addr;
+  uint32_t mask;
+  uint32_t nexthop;
+  uint32_t metric;
+
+  void load_from_info(const RipEntry *e) {
+    family = htons(2);
+    tag = htons(0);
+    addr = e->addr;
+    mask = e->mask;
+    nexthop = e->nexthop;
+    metric = e->metric;
+  }
+
+  void write_to_info(RipEntry *e) const {
+    e->addr = addr;
+    e->mask = mask;
+    e->nexthop = nexthop;
+    e->metric = metric;
+  }
+};
+
+struct RipPacketRaw {
+  uint8_t command;
+  uint8_t version;
+  uint16_t zero;
+  RipRouteEntry entries[0];
+
+  void load_from_info(const RipPacket *rip) {
+    command = rip->command;
+    version = 2;
+    zero = 0;
+    for (int i = 0; i < rip->numEntries; ++i) {
+      entries[i].load_from_info(&rip->entries[i]);
+    }
+  }
+
+  // 将内容写入 `RipPacket`，其中 entry 个数为 `n`
+  void write_to_info(int n, RipPacket *rip) const {
+    rip->numEntries = n;
+    rip->command = command;
+    for (int i = 0; i < n; ++i) {
+      entries[i].write_to_info(&rip->entries[i]);
+    }
+  }
+};
 
 /**
  * @brief 从接受到的 IP 包解析出 RIP 协议的数据
@@ -26,8 +91,22 @@
  * Mask 的二进制是不是连续的 1 与连续的 0 组成等等。
  */
 bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
-  // TODO:
-  return false;
+  auto header = (IPHeader *)packet;
+  if (header->get_total_length() > len) {
+    return false;
+  }
+  if (header->protocol != IPPROTO_UDP) {
+    return false;
+  }
+  auto udp_header = (UDPHeader *)header->get_payload();
+  if (!(udp_header->get_src_port() == RIP_PORT &&
+        udp_header->get_dst_port() == RIP_PORT)) {
+    return false;
+  }
+  int entry_count = udp_header->get_length() / sizeof(RipRouteEntry);
+  auto rip_packet = (RipPacketRaw *)(udp_header + 1);
+  rip_packet->write_to_info(entry_count, output);
+  return true;
 }
 
 /**
@@ -42,6 +121,8 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
  * 需要注意一些没有保存在 RipPacket 结构体内的数据的填写。
  */
 uint32_t assemble(const RipPacket *rip, uint8_t *buffer) {
-  // TODO:
-  return 0;
+  auto rip_packet = (RipPacketRaw *)buffer;
+  rip_packet->load_from_info(rip);
+  int length = sizeof(RipPacketRaw) + rip->numEntries * sizeof(RipRouteEntry);
+  return length;
 }
