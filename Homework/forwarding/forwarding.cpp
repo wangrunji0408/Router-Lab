@@ -2,15 +2,11 @@
 #include <stdlib.h>
 #include "../checksum/checksum.cpp"
 
-// 在 checksum.cpp 中定义
-extern bool validateIPChecksum(uint8_t *packet, size_t len);
-extern uint16_t calcIPChecksum(uint8_t *packet);
-
 // 更新 IP 头校验和
 void updateIPChecksum(uint8_t *packet, size_t len) {
   auto header = (IPHeader *)packet;
   header->checksum = 0;
-  uint16_t s = ~calcIPChecksum(packet);
+  uint16_t s = ~header->calc_checksum();
   header->checksum = htons(s);
 }
 

@@ -12,17 +12,6 @@
   存储的，1.2.3.4 在小端序的机器上被解释为整数 0x04030201 。
 */
 
-struct UDPHeader {
-  uint16_t src_port;
-  uint16_t dst_port;
-  uint16_t length;
-  uint16_t checksum;
-
-  uint16_t get_src_port() const { return ntohs(src_port); }
-  uint16_t get_dst_port() const { return ntohs(dst_port); }
-  uint16_t get_length() const { return ntohs(length); }
-};
-
 const uint16_t RIP_PORT = 520;
 
 struct RipRouteEntry {
@@ -73,6 +62,11 @@ struct RipPacketRaw {
       entries[i].write_to_info(&rip->entries[i]);
     }
   }
+
+  // 检查是否合法
+  bool validate() const {
+    return (command == 1 || command == 2) && version == 2 && zero == 0;
+  }
 };
 
 /**
@@ -91,21 +85,24 @@ struct RipPacketRaw {
  * Mask 的二进制是不是连续的 1 与连续的 0 组成等等。
  */
 bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
-  auto header = (IPHeader *)packet;
-  if (header->get_total_length() > len) {
+  auto ip = (IPHeader *)packet;
+  if (ip->get_total_length() > len) {
     return false;
   }
-  if (header->protocol != IPPROTO_UDP) {
+  if (ip->protocol != IPPROTO_UDP) {
     return false;
   }
-  auto udp_header = (UDPHeader *)header->get_payload();
-  if (!(udp_header->get_src_port() == RIP_PORT &&
-        udp_header->get_dst_port() == RIP_PORT)) {
+  auto udp = (UDPHeader *)ip->get_payload();
+  if (!(udp->get_src_port() == RIP_PORT && udp->get_dst_port() == RIP_PORT &&
+        udp->calc_checksum(ip->src_addr, ip->dst_addr) == 0xffff)) {
     return false;
   }
-  int entry_count = udp_header->get_length() / sizeof(RipRouteEntry);
-  auto rip_packet = (RipPacketRaw *)(udp_header + 1);
-  rip_packet->write_to_info(entry_count, output);
+  int entry_count = udp->get_length() / sizeof(RipRouteEntry);
+  auto rip = (RipPacketRaw *)(udp + 1);
+  if (!rip->validate()) {
+    return false;
+  }
+  rip->write_to_info(entry_count, output);
   return true;
 }
 
