@@ -47,8 +47,7 @@ struct UDPHeader {
   uint16_t get_length() const { return ntohs(length); }
   // 计算校验和
   uint16_t calc_checksum(uint32_t src_addr, uint32_t dst_addr) const {
-    uint32_t s =
-        calcChecksum((const uint8_t *)this, sizeof(UDPHeader) + get_length());
+    uint32_t s = calcChecksum((const uint8_t *)this, get_length());
     // pseudo IP header
     s += calcChecksum((const uint8_t *)&src_addr, 4);
     s += calcChecksum((const uint8_t *)&dst_addr, 4);

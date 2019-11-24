@@ -51,6 +51,9 @@ struct RipPacketRaw {
     zero = 0;
     for (int i = 0; i < rip->numEntries; ++i) {
       entries[i].load_from_info(&rip->entries[i]);
+      if (command == 1) {
+        entries[i].family = 0;
+      }
     }
   }
 
